@@ -1,144 +1,139 @@
-/** Create table */
-function gbq_create_table(prId, table_name, schema, partition, cluster) {
-  const projectId = prId;
-  if (partition != null) {
-    var partition_by = `PARTITION BY ${partition}`;
+/**
+ * @fileoverview This file contains functions for interacting with Google BigQuery.
+ * It provides a simplified interface for creating tables, running queries, and exporting data.
+ * Note: The BigQuery API must be enabled in the Google Cloud Platform project.
+ */
+
+//==================================================================================================
+// Helper Function for Job Execution
+//==================================================================================================
+
+/**
+ * Executes a BigQuery job and waits for it to complete.
+ * @param {string} projectId The Google Cloud Platform project ID.
+ * @param {object} request The request object for the BigQuery job.
+ * @return {object} The completed job results.
+ * @private
+ */
+function _executeBigQueryJob(projectId, request) {
+  let queryResults = BigQuery.Jobs.query(request, projectId);
+  const jobId = queryResults.jobReference.jobId;
+
+  let sleepTimeMs = 500;
+  while (!queryResults.jobComplete) {
+    Utilities.sleep(sleepTimeMs);
+    sleepTimeMs *= 2;
+    queryResults = BigQuery.Jobs.getQueryResults(projectId, jobId);
   }
-  else {
-    var partition_by = '';
-  }
-  if (cluster != null) {
-    var cluster_by = `CLUSTER BY ${cluster}`;
-  }
-  else {
-    var cluster_by = '';
-  }
-  const create_code = `
-    CREATE TABLE IF NOT EXISTS ${table_name}
+
+  return queryResults;
+}
+
+//==================================================================================================
+// BigQuery Table & Data Manipulation Functions
+//==================================================================================================
+
+/**
+ * Creates a new table in BigQuery if it does not already exist.
+ * @param {string} projectId The GCP project ID.
+ * @param {string} tableName The name of the table to create.
+ * @param {string} schema The schema of the table.
+ * @param {string} partitionField The field to use for partitioning (optional).
+ * @param {string} clusterFields The fields to use for clustering (optional).
+ */
+function createBigQueryTable(projectId, tableName, schema, partitionField, clusterFields) {
+  const partitionClause = partitionField ? `PARTITION BY ${partitionField}` : '';
+  const clusterClause = clusterFields ? `CLUSTER BY ${clusterFields}` : '';
+
+  const createQuery = `
+    CREATE TABLE IF NOT EXISTS ${tableName}
     (${schema})
-    ${partition_by}
-    ${cluster_by}
-  `
-  // Logger.log(create_code)
-  const request = {
-    query: create_code,
-    useLegacySql: false
-  };
-  let queryResults = BigQuery.Jobs.query(request, projectId);
-  const jobId = queryResults.jobReference.jobId;
+    ${partitionClause}
+    ${clusterClause}
+  `;
 
-  // Check on status of the Query Job.
-  let sleepTimeMs = 500;
-  while (!queryResults.jobComplete) {
-    Utilities.sleep(sleepTimeMs);
-    sleepTimeMs *= 2;
-    queryResults = BigQuery.Jobs.getQueryResults(projectId, jobId);
-  }
-}
-//////////////////////////////////////////
-/** Delete table GBQ (Trước khi chạy phải bật API BigQuery + Add service) */
-function gbq_drop_table(prId, target_table) {
-  const projectId = prId;
-  const del_code = `DROP TABLE IF EXISTS ${target_table}`
   const request = {
-    query: del_code,
-    useLegacySql: false
+    query: createQuery,
+    useLegacySql: false,
   };
-  let queryResults = BigQuery.Jobs.query(request, projectId);
-  const jobId = queryResults.jobReference.jobId;
 
-  // Check on status of the Query Job.
-  let sleepTimeMs = 500;
-  while (!queryResults.jobComplete) {
-    Utilities.sleep(sleepTimeMs);
-    sleepTimeMs *= 2;
-    queryResults = BigQuery.Jobs.getQueryResults(projectId, jobId);
-  }
-}
-//////////////////////////////////////////
-/** Delete data GBQ (Trước khi chạy phải bật API BigQuery + Add service) */
-function gbq_del(prId, target_table, condition) {
-  const projectId = prId;
-  const del_code = 'DELETE FROM ' + target_table + '\n' + 'where ' + condition
-  const request = {
-    query: del_code,
-    useLegacySql: false
-  };
-  let queryResults = BigQuery.Jobs.query(request, projectId);
-  const jobId = queryResults.jobReference.jobId;
-
-  // Check on status of the Query Job.
-  let sleepTimeMs = 500;
-  while (!queryResults.jobComplete) {
-    Utilities.sleep(sleepTimeMs);
-    sleepTimeMs *= 2;
-    queryResults = BigQuery.Jobs.getQueryResults(projectId, jobId);
-  }
+  _executeBigQueryJob(projectId, request);
+  Logger.log(`Table ${tableName} created or already exists.`);
 }
 
-//////////////////////////////////////////
-/** Transform data GBQ (Trước khi chạy phải bật API BigQuery + Add service) */
-function gbq_trans(prId, target_table, code) {
-  const projectId = prId;
-  const trans_code = 'insert into ' + target_table + '\n' + code
+/**
+ * Drops a table from BigQuery if it exists.
+ * @param {string} projectId The GCP project ID.
+ * @param {string} tableName The name of the table to drop.
+ */
+function dropBigQueryTable(projectId, tableName) {
+  const dropQuery = `DROP TABLE IF EXISTS ${tableName}`;
   const request = {
-    query: trans_code,
-    useLegacySql: false
+    query: dropQuery,
+    useLegacySql: false,
   };
-  let queryResults = BigQuery.Jobs.query(request, projectId);
-  const jobId = queryResults.jobReference.jobId;
 
-  // Check on status of the Query Job.
-  let sleepTimeMs = 500;
-  while (!queryResults.jobComplete) {
-    Utilities.sleep(sleepTimeMs);
-    sleepTimeMs *= 2;
-    queryResults = BigQuery.Jobs.getQueryResults(projectId, jobId);
-  }
+  _executeBigQueryJob(projectId, request);
+  Logger.log(`Table ${tableName} dropped if it existed.`);
 }
 
-//////////////////////////////////////////
-/** Export data từ GBQ (Trước khi chạy phải bật API BigQuery + Add service) */
-function gbq_export(prId, code) {
-  const projectId = prId;
-
+/**
+ * Deletes data from a BigQuery table based on a condition.
+ * @param {string} projectId The GCP project ID.
+ * @param {string} tableName The name of the table to delete from.
+ * @param {string} condition The WHERE clause condition for deletion.
+ */
+function deleteFromBigQueryTable(projectId, tableName, condition) {
+  const deleteQuery = `DELETE FROM ${tableName} WHERE ${condition}`;
   const request = {
-    query: code,
-    useLegacySql: false
+    query: deleteQuery,
+    useLegacySql: false,
   };
-  let queryResults = BigQuery.Jobs.query(request, projectId);
-  const jobId = queryResults.jobReference.jobId;
 
-  // Check on status of the Query Job.
-  let sleepTimeMs = 500;
-  while (!queryResults.jobComplete) {
-    Utilities.sleep(sleepTimeMs);
-    sleepTimeMs *= 2;
-    queryResults = BigQuery.Jobs.getQueryResults(projectId, jobId);
+  _executeBigQueryJob(projectId, request);
+  Logger.log(`Data deleted from ${tableName} where ${condition}.`);
+}
+
+/**
+ * Inserts data into a BigQuery table using a SELECT query.
+ * @param {string} projectId The GCP project ID.
+ * @param {string} tableName The name of the target table.
+ * @param {string} selectQuery The SELECT query to generate the data to insert.
+ */
+function insertIntoBigQueryTable(projectId, tableName, selectQuery) {
+  const insertQuery = `INSERT INTO ${tableName}\n${selectQuery}`;
+  const request = {
+    query: insertQuery,
+    useLegacySql: false,
+  };
+
+  _executeBigQueryJob(projectId, request);
+  Logger.log(`Data inserted into ${tableName}.`);
+}
+
+//==================================================================================================
+// BigQuery Data Export Functions
+//==================================================================================================
+
+/**
+ * Exports data from BigQuery by running a query.
+ * @param {string} projectId The GCP project ID.
+ * @param {string} query The SQL query to execute.
+ * @return {Array<Array<any>>|null} The exported data as a 2D array, or null if no rows are returned.
+ */
+function exportBigQueryData(projectId, query) {
+  const request = {
+    query: query,
+    useLegacySql: false,
+  };
+
+  const queryResults = _executeBigQueryJob(projectId, request);
+
+  if (!queryResults.rows) {
+    Logger.log('No rows returned from the query.');
+    return null;
   }
 
-  // Get all the rows of results.
-  let rows = queryResults.rows;
-  while (queryResults.pageToken) {
-    queryResults = BigQuery.Jobs.getQueryResults(projectId, jobId, {
-      pageToken: queryResults.pageToken
-    });
-    rows = rows.concat(queryResults.rows);
-  }
-
-  if (!rows) {
-    Logger.log('No rows returned.');
-    return;
-  }
-
-  var data = new Array(rows.length);
-  for (let i = 0; i < rows.length; i++) {
-    const cols = rows[i].f;
-    data[i] = new Array(cols.length);
-    for (let j = 0; j < cols.length; j++) {
-      data[i][j] = cols[j].v;
-    }
-  }
+  const data = queryResults.rows.map(row => row.f.map(cell => cell.v));
   return data;
 }
-///////////////////////////////////////////

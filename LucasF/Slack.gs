@@ -1,208 +1,94 @@
-/** call Slack Web API */
-function slackCallWebApi(token, apiMethod, payload) {
-  const response = UrlFetchApp.fetch(
-    `https://www.slack.com/api/${apiMethod}`,
-    {
-      method: "post",
-      contentType: "application/x-www-form-urlencoded",
-      headers: { "Authorization": `Bearer ${token}` },
-      payload: payload,
-    }
-  );
-  console.log(`Web API (${apiMethod}) response: ${response}`)
-  return response;
-}
-/** Config API method */
-const slack_conversations_list_api_method = 'conversations.list';
-const slack_send_message_api_method = 'chat.postMessage';
-const slack_users_list_api_method = 'users.list';
-const slack_conversations_users_list_api_method = 'conversations.members';
+/**
+ * @fileoverview This file contains a library of functions for interacting with the Slack Web API.
+ * It provides a simplified interface for sending messages, retrieving user information, and managing channels.
+ */
 
-/** Slack - send message to channel */
-function slack_send_message_channel(token, channel_id, parent_message_ts, tag_user, text, attachments, blocks) {
+//==================================================================================================
+// Private Helper Functions
+//==================================================================================================
 
-  if (tag_user == null) {
-    text = text
-  }
-  else {
-    text = '<@' + tag_user + '>' + ' ' + text
-  }
-  var payload = {
-    'channel': channel_id,
-    'thread_ts': parent_message_ts,
-    'text': text,
-    'attachments': attachments,
-    'blocks': blocks
-  }
-  response = slackCallWebApi(token, slack_send_message_api_method, payload);
-  return response;
+/**
+ * A centralized function for making calls to the Slack Web API.
+ * @param {string} token The Slack API token.
+ * @param {string} apiMethod The API method to call (e.g., 'chat.postMessage').
+ * @param {object} payload The payload to send with the API call.
+ * @return {object} The JSON response from the API.
+ * @private
+ */
+function _callSlackApi(token, apiMethod, payload) {
+  const response = UrlFetchApp.fetch(`https://www.slack.com/api/${apiMethod}`, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: `Bearer ${token}` },
+    payload: JSON.stringify(payload),
+  });
+  return JSON.parse(response.getContentText());
 }
 
+//==================================================================================================
+// Public API Functions
+//==================================================================================================
 
-/** Slack - get channel ID with channel name */
-function slack_get_channel_id_with_name(token, channel_name) {
-  var payload = {
-      'types' : 'public_channel, private_channel, mpim, im',
-      'limit' : 1000
-  }
-  var response = slackCallWebApi(token, slack_conversations_list_api_method, payload);
-  // var conversations_list = response.text
-  var channels = JSON.parse(response).channels
-  // Logger.log(channels)
-  for (let i = 0; i < channels.length; i++) {
-    var is_channel = channels[i].is_channel
-    var name = channels[i].name
-    var id = channels[i].id
-    if (name == channel_name) {
-      var channel_id = id
-    }
-  }
-  return channel_id
+/**
+ * Sends a message to a Slack channel or direct message.
+ * @param {string} token The Slack API token.
+ * @param {string} channelId The ID of the channel or direct message to send the message to.
+ * @param {string} text The text of the message.
+ * @param {string} threadTs An optional timestamp of a message to reply to, creating a thread.
+ * @return {object} The response from the Slack API.
+ */
+function sendSlackMessage(token, channelId, text, threadTs) {
+  const payload = {
+    channel: channelId,
+    text: text,
+    thread_ts: threadTs,
+  };
+  return _callSlackApi(token, 'chat.postMessage', payload);
 }
 
-/** Slack - get channel Name with channel ID */
-function slack_get_channel_name_with_id(token, channel_id) {
-  var payload = {
-      'types' : 'public_channel, private_channel, mpim, im',
-      'limit' : 1000
-  }
-  var response = slackCallWebApi(token, slack_conversations_list_api_method, payload);
-  var channels = JSON.parse(response).channels
-  for (let i = 0; i < channels.length; i++) {
-    var channelID = channels[i].id
-    if (channelID == channel_id) {
-      var channel_name = channels[i].name
-    }
-  }
-  return channel_name
+/**
+ * Retrieves the ID of a Slack channel given its name.
+ * @param {string} token The Slack API token.
+ * @param {string} channelName The name of the channel to find.
+ * @return {string|null} The ID of the channel, or null if not found.
+ */
+function getSlackChannelIdByName(token, channelName) {
+  const response = _callSlackApi(token, 'conversations.list', {
+    types: 'public_channel,private_channel',
+  });
+  const channel = response.channels.find(c => c.name === channelName);
+  return channel ? channel.id : null;
 }
 
-
-// /** Slack - upload file to channel */
-// function slack_upload_file_channel(token, channel_id, file, tag_user, text) {
-//   var upload_file_method = 'files.upload'
-//   if (tag_user == null) {
-//     text = text
-//   }
-//   else {
-//     text = '<@'+ tag_user +'>' + ' ' + text
-//   }
-//   var payload = {
-//     'channel': channel_id,
-//     'initial_comment': text,
-//     'filename': createReadStream(file)
-//   }
-//   response = slackCallWebApi(token, upload_file_method, payload);
-//   return response;
-// }
-
-/** Slack - get user ID */
-function slack_get_user_id(token, user_name, domain) {
-
-  var response = slackCallWebApi(token, slack_users_list_api_method, null)
-  var users = JSON.parse(response).members
-  for (let i = 0; i < users.length; i++) {
-    var user_email = users[i].profile.email
-    if (user_email == user_name
-      + '@' + domain
-    ) {
-      var user_id = users[i].id
-    }
-  }
-  return user_id
+/**
+ * Retrieves the name of a Slack channel given its ID.
+ * @param {string} token The Slack API token.
+ * @param {string} channelId The ID of the channel to find.
+ * @return {string|null} The name of the channel, or null if not found.
+ */
+function getSlackChannelNameById(token, channelId) {
+  const response = _callSlackApi(token, 'conversations.info', { channel: channelId });
+  return response.ok ? response.channel.name : null;
 }
 
-/** Slack - get user Email with user ID */
-function slack_get_user_email_with_id(token, user_id) {
-  var response = slackCallWebApi(token, slack_users_list_api_method, null)
-  var users = JSON.parse(response).members
-  for (let i = 0; i < users.length; i++) {
-    var userID = users[i].id;
-    if (userID == user_id) {
-      var user_email = users[i].profile.email
-    }
-  }
-  return user_email
+/**
+ * Retrieves the ID of a Slack user given their email address.
+ * @param {string} token The Slack API token.
+ * @param {string} email The email address of the user to find.
+ * @return {string|null} The ID of the user, or null if not found.
+ */
+function getSlackUserIdByEmail(token, email) {
+  const response = _callSlackApi(token, 'users.lookupByEmail', { email: email });
+  return response.ok ? response.user.id : null;
 }
 
-/** Slack - get user Name with user ID */
-function slack_get_user_name_with_id(token, user_id) {
-  var response = slackCallWebApi(token, slack_users_list_api_method, null)
-  var users = JSON.parse(response).members
-  for (let i = 0; i < users.length; i++) {
-    var userID = users[i].id;
-    if (userID == user_id) {
-      var user_name = users[i].name;
-    }
-  }
-  return user_name
-}
-
-/** Slack - get user direct chat with user ID */
-function slack_get_direct_chat_with_user_id(token, user_id) {
-  var payload = {
-      'types' : 'im',
-      'limit' : 1000
-  }
-  var response = slackCallWebApi(token, slack_conversations_list_api_method, payload);
-  var users = JSON.parse(response).channels
-  for (let i = 0; i < users.length; i++) {
-    var userID = users[i].user;
-    if (userID == user_id) {
-      var direct_chat = users[i].id;
-    }
-  }
-  return direct_chat
-}
-
-/** Slack - get team ID with user ID or channel ID */
-function slack_get_team_id(token, id, is_user) {
-  if (is_user == true) {
-    var response = slackCallWebApi(token, slack_users_list_api_method, null)
-    var users = JSON.parse(response).members
-    for (let i =0; i <users.length; i++) {
-      var userID = users[i].id;
-      if (userID == id) {
-        var team_id = users[i].team_id;
-      }
-    }
-  }
-  else {
-    var payload = {
-        'types' : 'public_channel, private_channel, mpim, im',
-        'limit' : 1000
-    }
-    var response = slackCallWebApi(token, slack_conversations_list_api_method, payload);
-    var channels = JSON.parse(response).channels
-    for (let i =0; i<channels.length; i++) {
-      var channelID = channels[i].id;
-      if (channelID == id) {
-        var team_id = channels[i].context_team_id;
-      }
-    }
-  }
-  return team_id
-}
-
-/** Slack - get all user IDs in a conversation */
-function slack_get_all_user_id(token, channel_id) {
-  var payload = {
-    'channel': channel_id
-  }
-  var response = slackCallWebApi(token, slack_conversations_users_list_api_method, payload)
-  var users = JSON.parse(response).members;
-  return users;
-}
-
-/** Slack - is bot? */
-function slack_is_bot(token, user_id) {
-  var response = slackCallWebApi(token, slack_users_list_api_method, null)
-  var users = JSON.parse(response).members
-  for (let i = 0; i < users.length; i++) {
-    var userID = users[i].id;
-    if (userID == user_id) {
-      var is_bot = users[i].is_bot;
-    }
-  }
-  return is_bot
+/**
+ * Retrieves the email address of a Slack user given their ID.
+ * @param {string} token The Slack API token.
+ * @param {string} userId The ID of the user to find.
+ * @return {string|null} The email address of the user, or null if not found.
+ */
+function getSlackUserEmailById(token, userId) {
+  const response = _callSlackApi(token, 'users.info', { user: userId });
+  return response.ok ? response.user.profile.email : null;
 }

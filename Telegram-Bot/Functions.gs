@@ -1,90 +1,90 @@
-/** chatGPT */
-function gpt_chat(message) {
-  var prompt =  message;
-  var model = "text-davinci-003"
-  temperature= 0
-  maxTokens = 3999 
+/**
+ * @fileoverview This file contains the core functions for the Telegram bot.
+ * It includes an integration with the OpenAI API for chat functionality and provides
+ * a system for pinning and recalling messages using a Google Sheet.
+ */
 
-    // Set up the request body with the given parameters
-    var requestBody = {
-      "model": model,
-      "prompt": prompt,
-      "temperature": temperature,
-      "max_tokens": maxTokens,
-    };
+//==================================================================================================
+// OpenAI Integration
+//==================================================================================================
 
-    var requestOptions = {
-      "method": "POST",
-      "headers": {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer "+openAIapi
-      },
-      "payload": JSON.stringify(requestBody)
-    }
-  var response = UrlFetchApp.fetch("https://api.openai.com/v1/completions", requestOptions);
-  var responseText = response.getContentText();
-  var json = JSON.parse(responseText);
-  (json['choices'][0]['text']).replace(/\n/g, '%0A')
-  var text = ((json['choices'][0]['text']).replace(/^\s+|\s+$/g, '')).replace(/\n/g, '\n')
-  return text
+/**
+ * Sends a prompt to the OpenAI API and returns the response.
+ * @param {string} prompt The prompt to send to the API.
+ * @return {string} The text of the API's response.
+ */
+function getGptResponse(prompt) {
+  const requestBody = {
+    model: 'text-davinci-003',
+    prompt: prompt,
+    temperature: 0,
+    max_tokens: 3999,
+  };
+
+  const requestOptions = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${openAIapi}`,
+    },
+    payload: JSON.stringify(requestBody),
+  };
+
+  const response = UrlFetchApp.fetch('https://api.openai.com/v1/completions', requestOptions);
+  const responseData = JSON.parse(response.getContentText());
+  return responseData.choices[0].text.trim();
 }
 
-/** Pin a message */
-function pin_message(keyword, content) {
-  var spreadsheet = '1d3-GWYkUGjU63b5Wys1f8j7j38oR7awnqspKLm9_hiY';
-  var sheet = 'Pinned Messages';
-  LucasF.append_sheet_data(spreadsheet, sheet, [[keyword, content]]);  
-  return '`This message is pinned.`'
+//==================================================================================================
+// Pinned Message Functions
+//==================================================================================================
+
+/**
+ * Pins a message by storing it in a Google Sheet.
+ * @param {string} keyword The keyword to associate with the pinned message.
+ * @param {string} content The content of the message to pin.
+ * @return {string} A confirmation message.
+ */
+function pinMessage(keyword, content) {
+  LucasF.append_sheet_data(PINNED_MESSAGES_SPREADSHEET_ID, 'Pinned Messages', [[keyword, content]]);
+  return 'This message is pinned.';
 }
 
-/** Recall a pinned message */
-function recall_pinned_message(keyword) {
-  var spreadsheet = '1d3-GWYkUGjU63b5Wys1f8j7j38oR7awnqspKLm9_hiY';
-  var sheet = 'Pinned Messages';
-  var data_range = LucasF.get_sheet_data(spreadsheet, sheet);
-  var result = [];
-  for (let i = 0; i < data_range.length; i++) {
-    if (data_range[i][0].toString().toLowerCase().includes(keyword.toLowerCase())) {
-      result.push(`*${data_range[i][0]}*: ${LucasF.gen_format_code(data_range[i][1], 'markdown')}`);
-    }
+/**
+ * Recalls a pinned message from the Google Sheet based on a keyword.
+ * @param {string} keyword The keyword to search for.
+ * @return {string} The pinned message(s) or a "not found" message.
+ */
+function recallPinnedMessage(keyword) {
+  const data = LucasF.get_sheet_data(PINNED_MESSAGES_SPREADSHEET_ID, 'Pinned Messages');
+  const matchingMessages = data.filter(row => row[0].toString().toLowerCase().includes(keyword.toLowerCase()));
+
+  if (matchingMessages.length === 0) {
+    return 'Not found!';
   }
-  if (result.length == 0) {
-    return '`Not found!`';
-  }
-  else {
-    return result.join('\n\n')
-  }
+
+  return matchingMessages.map(row => `*${row[0]}*: ${LucasF.gen_format_code(row[1], 'markdown')}`).join('\\n\\n');
 }
 
-/** Remove pinned message */
-function remove_pinned_message(keyword, index) {
-  var spreadsheet = '1d3-GWYkUGjU63b5Wys1f8j7j38oR7awnqspKLm9_hiY';
-  var sheet = 'Pinned Messages';
-  var data_range = LucasF.get_sheet_data(spreadsheet, sheet);
-  var row_arr = [];
-  var index = Number(index);
-  if (index == null) {
-    for (let i = 0; i < data_range.length; i++) {
-      if (data_range[i][0].toString().toLowerCase().includes(keyword.toLowerCase())) {
-        row_arr.push(i+1);
+/**
+ * Removes one or all pinned messages associated with a keyword.
+ * @param {string} keyword The keyword of the message(s) to remove.
+ * @param {number|null} index The specific index of the message to remove (if there are multiple).
+ * @return {string} A confirmation message.
+ */
+function removePinnedMessage(keyword, index) {
+  const sheet = SpreadsheetApp.openById(PINNED_MESSAGES_SPREADSHEET_ID).getSheetByName('Pinned Messages');
+  const data = sheet.getDataRange().getValues();
+  const rowsToDelete = [];
+
+  data.forEach((row, i) => {
+    if (row[0].toString().toLowerCase().includes(keyword.toLowerCase())) {
+      if (index === null || rowsToDelete.length === index) {
+        rowsToDelete.push(i + 1);
       }
     }
-  }
-  else {
-    var index_x = 0;
-    for (let i = 0; i < data_range.length; i++) {
-      if (data_range[i][0].toString().toLowerCase().includes(keyword.toLowerCase())) {
-        if (index_x === index) {
-          row_arr.push(i+1);
-        }
-        index_x ++;
-      }
-    }
-  }
-  var remove_gap = 0;
-  for (let k = 0; k<row_arr.length; k++) {
-    LucasF.delete_row(spreadsheet, sheet, row_arr[k] - remove_gap);
-    remove_gap ++
-  }
-  return '`Unpin message(s)!`'
+  });
+
+  rowsToDelete.reverse().forEach(rowNum => sheet.deleteRow(rowNum));
+  return 'Unpinned message(s)!';
 }

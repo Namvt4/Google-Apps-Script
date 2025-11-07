@@ -1,90 +1,94 @@
-/** Tool https://docs.google.com/spreadsheets/d/1wrrYuzOQqX8F5CV-LdV__E4x5nJCqELDET-OJJISHS0/edit#gid=1074668009 */
+/**
+ * @fileoverview This file contains functions for managing and transferring Google Drive files.
+ * It is designed to be used with a Google Sheet as a control panel.
+ * Tool: https://docs.google.com/spreadsheets/d/1wrrYuzOQqX8F5CV-LdV__E4x5nJCqELDET-OJJISHS0/edit#gid=1074668009
+ */
 
+/**
+ * Lists all files owned by the specified owner and populates them into the 'FileList' sheet.
+ */
 function listFiles() {
-  var files = DriveApp.getFiles();
-  Logger.log(files);
-  var data = [];
-  var i = 1;
-  while ( files.hasNext() ) {
-    var file = files.next();
-    Logger.log(file.getName())
-    if (file.getId() != file_source_id && file.getOwner() != null) {
-      Logger.log(file.getOwner().getEmail())
-    }
-    
-    if (file.getId() != file_source_id && file.getOwner() != null && file.getOwner().getEmail() == owner) {
-      Logger.log(file.getId());
-      // file.setOwner('hanee@ahamove.com');
-      // Logger.log(file.getId() + ' Done ' + file.getOwner().getEmail() + ' ' + file.getUrl() + '\n' + file.getName());
+  const files = DriveApp.getFiles();
+  let fileCounter = 1;
 
-      var stt = i;
-      var i = i + 1;
-      var file_name = file.getName();
-      var file_id = file.getId();
-      var file_url = file.getUrl();
-      var present_owner = file.getOwner().getEmail();
-      var viewer = file.getViewers();
-      var viewer_email = []
-      for (let x = 0; x < viewer.length; x++) {
-        viewer_email.push(viewer[x].getEmail());
-      }
-      var editer = file.getEditors();
-      var editer_email = []
-      for (let y = 0; y <editer.length; y++) {
-        editer_email.push(editer[y].getEmail())
-      }
-      var raw_data = [[stt, file_name, file_id, file_url, present_owner, viewer_email.toString(), editer_email.toString()]];
-      var data = data.concat(raw_data);
-      append_sheet_data('FileList', raw_data);
-      Logger.log(raw_data);
-      // Logger.log(data);
-    }
-    else {
-      true;
+  while (files.hasNext()) {
+    const file = files.next();
+    const ownerEmail = file.getOwner() ? file.getOwner().getEmail() : null;
+
+    if (file.getId() !== file_source_id && ownerEmail === owner) {
+      const viewers = file.getViewers().map(user => user.getEmail());
+      const editors = file.getEditors().map(user => user.getEmail());
+
+      const fileData = [
+        [
+          fileCounter++,
+          file.getName(),
+          file.getId(),
+          file.getUrl(),
+          ownerEmail,
+          viewers.join(', '),
+          editors.join(', '),
+        ],
+      ];
+
+      append_sheet_data('FileList', fileData);
+      Logger.log(`Added file: ${file.getName()}`);
     }
   }
-  // Logger.log(data);
 }
-//////////////////////////////////////////////////////////////////////////////////////////////////
-function transfer_ownership() {
-  var transfer_data = get_range_data('FileList', 'A1:I9999');
-  for (var i = 0; i < transfer_data.length; i++) {
-    if (transfer_data[i][8] == true) {
-      var transfer_file = DriveApp.getFileById(transfer_data[i][2]);
-      var trassfer_to = transfer_data[i][7];
-      var add_editor = transfer_file.addEditor(trassfer_to);
-      var process = transfer_file.setOwner(trassfer_to);
-      // var response = process.getResponses();
-      Logger.log(transfer_file);
-      // return ContentService.createTextOutput('DONE');
-    }
-    else {
+
+/**
+ * Transfers ownership of files listed in the 'FileList' sheet.
+ * It reads the sheet and transfers ownership for rows where the transfer column is marked as TRUE.
+ */
+function transferOwnership() {
+  const transferData = get_range_data('FileList', 'A1:I9999');
+
+  transferData.forEach(row => {
+    const shouldTransfer = row[8];
+    if (shouldTransfer === true) {
+      const fileId = row[2];
+      const newOwnerEmail = row[7];
       
+      try {
+        const file = DriveApp.getFileById(fileId);
+        file.addEditor(newOwnerEmail);
+        file.setOwner(newOwnerEmail);
+        Logger.log(`Transferred ownership of ${file.getName()} to ${newOwnerEmail}`);
+      } catch (e) {
+        Logger.log(`Failed to transfer ownership of file ID ${fileId}: ${e.message}`);
+      }
     }
-  }
+  });
 }
-//////////////////////////////////////////////////////////////////////////////////////////////////
-function clear_old_data () {
-  var range = SpreadsheetApp
-               .getActive()
-               .getSheetByName('FileList')
-               .getRange('A3:I9999');
- range.clearContent();
+
+/**
+ * Clears the content of the 'FileList' sheet, preparing it for a new list of files.
+ */
+function clearOldData() {
+  const range = SpreadsheetApp.getActive().getSheetByName('FileList').getRange('A3:I9999');
+  range.clearContent();
+  Logger.log('Cleared old data from FileList sheet.');
 }
-//////////////////////////////////////////////////////////////////////////////////////////////////
-function move_files() {
-  var new_folder_id = createFolderBasic(backup_folder, owner);
-  var files = get_range_data('FileList', 'A1:I9999');
-  for (var i = 0; i < files.length; i++) {
-    if (files[i][8] == true) {
-      var file_id = files[i][2];
-      moveFiles(file_id, new_folder_id);
+
+/**
+ * Moves files to a specified backup folder.
+ * It reads the 'FileList' sheet and moves files for rows where the move column is marked as TRUE.
+ */
+function moveFilesToBackup() {
+  const newFolderId = createFolderBasic(backup_folder, owner);
+  const filesToMove = get_range_data('FileList', 'A1:I9999');
+
+  filesToMove.forEach(row => {
+    const shouldMove = row[8];
+    if (shouldMove === true) {
+      const fileId = row[2];
+      try {
+        moveFiles(fileId, newFolderId);
+        Logger.log(`Moved file ID ${fileId} to folder ID ${newFolderId}`);
+      } catch (e) {
+        Logger.log(`Failed to move file ID ${fileId}: ${e.message}`);
+      }
     }
-    else {}
-  }
+  });
 }
-///////////////////////////////////////////////////////////////////////////////
-// function account() {
-//   var account = Session.getActiveUser().getEmail()
-//   return account;
-// }

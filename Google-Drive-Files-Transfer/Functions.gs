@@ -1,227 +1,149 @@
-// move to folder
-function moveFiles(sourceFileId, targetFolderId) {
-  var file = DriveApp.getFileById(sourceFileId);
-  var folder = DriveApp.getFolderById(targetFolderId);
+/**
+ * @fileoverview This file contains utility functions for Google Drive, Google Sheets, and external APIs.
+ * It is intended to be used as a shared library across different Google Apps Script projects.
+ */
+
+//==================================================================================================
+// Google Drive Functions
+//==================================================================================================
+
+/**
+ * Moves a file to a specified folder in Google Drive.
+ * @param {string} sourceFileId The ID of the file to move.
+ * @param {string} targetFolderId The ID of the destination folder.
+ */
+function moveFile(sourceFileId, targetFolderId) {
+  const file = DriveApp.getFileById(sourceFileId);
+  const folder = DriveApp.getFolderById(targetFolderId);
   file.moveTo(folder);
 }
 
-////////////////////////////////////////////////////////////
-// create  folder
-function createFolderBasic(folderID, folderName) {
-  var folder = DriveApp.getFolderById(folderID);
-  var newFolder = folder.createFolder(folderName);
+/**
+ * Creates a new folder inside a specified parent folder.
+ * @param {string} parentFolderId The ID of the parent folder.
+ * @param {string} folderName The name of the new folder.
+ * @return {string} The ID of the newly created folder.
+ */
+function createFolder(parentFolderId, folderName) {
+  const parentFolder = DriveApp.getFolderById(parentFolderId);
+  const newFolder = parentFolder.createFolder(folderName);
   return newFolder.getId();
-};
+}
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// get data from metabase in csv form
-function get_metabase_csv(card_id, params){
-  // get metabase token
-  var login_link = 'https://ep.ahamove.com/bi/v1/metabase_login?email='+metabase_acc+'&password='+encodeURIComponent(password);
-  var text = UrlFetchApp.fetch(login_link).getContentText();
-  var session_id = text.replace("sessionid", "").trim();
+//==================================================================================================
+// Google Sheets Functions
+//==================================================================================================
 
-  // parse filter parameters
-  if (params == null){
-    var api_link = 'https://admin.ahamove.com/public/v1/bi/metabase_card_csv?sessionid=' + session_id + '&cardid=' + card_id;
-  } else {
-    var api_link = 'https://admin.ahamove.com/public/v1/bi/metabase_card_csv?sessionid=' + session_id + '&cardid=' + card_id
-                    + '&' + params;
+/**
+ * Clears all data from a specified sheet.
+ * @param {string} sheetName The name of the sheet to clear.
+ */
+function clearSheetData(sheetName) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  sheet.clear();
+}
+
+/**
+ * Overwrites the data in a sheet with a new dataset.
+ * @param {string} sheetName The name of the sheet to overwrite.
+ * @param {Array<Array<any>>} data The new data to write to the sheet.
+ */
+function overwriteSheetData(sheetName, data) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+}
+
+/**
+ * Appends new data to the end of a sheet.
+ * @param {string} sheetName The name of the sheet to append data to.
+ * @param {Array<Array<any>>} data The data to append.
+ */
+function appendSheetData(sheetName, data) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  const lastRow = sheet.getLastRow();
+  sheet.getRange(lastRow + 1, 1, data.length, data[0].length).setValues(data);
+}
+
+/**
+ * Retrieves all data from a specified sheet.
+ * @param {string} sheetName The name of the sheet to get data from.
+ * @return {Array<Array<any>>} The data from the sheet.
+ */
+function getSheetData(sheetName) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  return sheet.getDataRange().getValues();
+}
+
+/**
+ * Retrieves data from a specified range in a sheet.
+ * @param {string} sheetName The name of the sheet.
+ * @param {string} rangeA1Notation The A1 notation of the range to get data from.
+ * @return {Array<Array<any>>} The data from the specified range.
+ */
+function getRangeData(sheetName, rangeA1Notation) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  return sheet.getRange(rangeA1Notation).getValues();
+}
+
+//==================================================================================================
+// External API Functions
+//==================================================================================================
+
+/**
+ * Fetches data from a Metabase card in CSV format.
+ * @param {string} cardId The ID of the Metabase card.
+ * @param {string} params Optional query parameters for the card.
+ * @return {Array<Array<string>>} The data from the Metabase card as a 2D array.
+ */
+function getMetabaseCsv(cardId, params) {
+  const loginUrl = `https://ep.ahamove.com/bi/v1/metabase_login?email=${metabase_acc}&password=${encodeURIComponent(password)}`;
+  const sessionResponse = UrlFetchApp.fetch(loginUrl).getContentText();
+  const sessionId = sessionResponse.replace('sessionid', '').trim();
+
+  let apiUrl = `https://admin.ahamove.com/public/v1/bi/metabase_card_csv?sessionid=${sessionId}&cardid=${cardId}`;
+  if (params) {
+    apiUrl += `&${params}`;
   }
 
-  // get data from metabase
-  var response = UrlFetchApp.fetch(api_link).getContentText();
-  var data = Utilities.parseCsv(response);
-  return data;
-}
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// delete all data in a sheet
-function clear_sheet_data(sheet_name) {
-  var s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheet_name);
-
-  // clear old data
-  s.clear();
+  const csvResponse = UrlFetchApp.fetch(apiUrl).getContentText();
+  return Utilities.parseCsv(csvResponse);
 }
 
-// overwrite new data to sheet
-function overwrite_sheet_data(sheet_name, data) {
-  var s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheet_name);
+/**
+ * Sends a message to a Telegram chat.
+ * @param {string} botToken The token of the Telegram bot.
+ * @param {string} chatId The ID of the chat to send the message to.
+ * @param {string} text The text of the message.
+ * @param {string} messageId The ID of the message to reply to (optional).
+ * @param {string} parseMode The parse mode for the message (e.g., 'Markdown', 'HTML').
+ * @return {string} The response from the Telegram API.
+ */
+function sendTelegramMessage(botToken, chatId, text, messageId, parseMode) {
+  const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  const payload = {
+    chat_id: String(chatId),
+    text: text,
+    reply_to_message_id: messageId,
+    parse_mode: parseMode,
+  };
 
-  // write new data
-  s.getRange(1, 1, data.length, data[0].length).setValues(data);
+  const options = {
+    method: 'post',
+    payload: payload,
+    muteHttpExceptions: true,
+  };
+
+  const response = UrlFetchApp.fetch(apiUrl, options);
+  return response.getContentText();
 }
 
-// overwrite new data to sheet in a different spreadsheet
-function overwrite_sheet_data1(spreadsheet_id, sheet_name, data) {
-  var s = SpreadsheetApp.openById(spreadsheet_id).getSheetByName(sheet_name);
-
-  // write new data
-  s.getRange(1, 1, data.length, data[0].length).setValues(data);
-}
-
-// get sheet data
-function get_sheet_data(sheet_name) {
-  var s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheet_name);
-  var rows = s.getDataRange();
-  var values = rows.getValues();
-  return values;
-}
-
-// append new data to sheet
-function append_sheet_data(sheet_name, data) {
-  var s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheet_name);
-  var s_data = get_sheet_data(sheet_name);
-
-  // append new data
-  s.getRange(s_data.length+1, 1, data.length, data[0].length).setValues(data);
-}
-
-// get range data
-function get_range_data(sheet_name, range) {
-  var s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheet_name);
-  var range = s.getRange(range);
-  var range_value = range.getValues();
-  return range_value;
-}
-
-// create new sheet in a spreadsheet
-function create_sheet(spreadsheet_id, sheet_name) {
-  var s = SpreadsheetApp.openById(spreadsheet_id);
-  s.insertSheet().setName(sheet_name);
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// telegram send message
-function tele_send_message(bot_token, chat_id, text, message_id, parse_mode) {
-  var main_url = "https://api.telegram.org/bot"+ bot_token +"/sendMessage"
-  var querystring = {
-    "chat_id": String(chat_id),
-    "text": text,
-    "reply_to_message_id": message_id,
-    "parse_mode": parse_mode
-  }
-  var options = {
-    'method' : 'post',
-    'payload' : querystring,
-    'muteHttpExceptions': true
-  }
-  var response = UrlFetchApp.fetch(main_url, options);
-  return response.getContentText()
-}
-
-// set webhook
-function set_webhook(bot_token, webhook_url){
-  var response = UrlFetchApp.fetch('https://api.telegram.org/bot' + bot_token + '/setwebhook?url=' + encodeURI(webhook_url))
-  return response
-}
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-var saveToRootFolder = false
-
-function _exportBlob(blob, fileName, spreadsheet) {
-  blob = blob.setName(fileName)
-  var folder = saveToRootFolder ? DriveApp : DriveApp.getFileById(spreadsheet.getId()).getParents().next()
-  var pdfFile = folder.createFile(blob)
-  
-  // Get new file by ID and create a link to download
-  var fileId = pdfFile.getId();
-  var file = DriveApp.getFileById(fileId);
-  var downloadLink = file.getDownloadUrl();
-  var driveLink = pdfFile.getUrl();
-  
-  // Display a modal dialog box with custom HtmlService content.
-  const htmlOutput = HtmlService
-    .createHtmlOutput('<p>Click to download <a href="' + downloadLink + '" target="_blank">' + fileName + '</a></p>')
-    .setWidth(300)
-    .setHeight(80)
-  SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Export Successful')
-}
-function _getAsBlob(url, sheet, range) {
-  var rangeParam = ''
-  var sheetParam = ''
-  if (range) {
-    rangeParam =
-      '&r1=' + (range.getRow() - 1)
-      + '&r2=' + range.getLastRow()
-      + '&c1=' + (range.getColumn() - 1)
-      + '&c2=' + range.getLastColumn()
-  }
-  if (sheet) {
-    sheetParam = '&gid=' + sheet.getSheetId()
-  }
-  // A credit to https://gist.github.com/Spencer-Easton/78f9867a691e549c9c70
-  // these parameters are reverse-engineered (not officially documented by Google)
-  // they may break overtime.
-  var exportUrl = url.replace(/\/edit.*$/, '')
-      + '/export?exportFormat=pdf&format=pdf'
-      + '&size=7x8.3'
-      + '&portrait=true'
-      + '&fitw=true'       
-      + '&top_margin=0.1'              
-      + '&bottom_margin=0.1'          
-      + '&left_margin=0.1'             
-      + '&right_margin=0.1'           
-      + '&sheetnames=false&printtitle=false'
-      + '&pagenum=UNDEFINED' // change it to CENTER to print page numbers
-      + '&gridlines=true'
-      + '&fzr=FALSE'      
-      + sheetParam
-      + rangeParam
-      
-  Logger.log('exportUrl=' + exportUrl)
-  var response
-  var i = 0
-  for (; i < 5; i += 1) {
-    response = UrlFetchApp.fetch(exportUrl, {
-      muteHttpExceptions: true,
-      headers: { 
-        Authorization: 'Bearer ' +  ScriptApp.getOAuthToken(),
-      },
-    })
-    if (response.getResponseCode() === 429) {
-      // printing too fast, retrying
-      Utilities.sleep(3000)
-    } else {
-      break
-    }
-  }
-  
-  if (i === 5) {
-    throw new Error('Printing failed. Too many sheets to print.')
-  }
-  
-  return response.getBlob()
-}
-// function exportAsPDF() {
-//   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet()
-//   var blob = _getAsBlob(spreadsheet.getUrl())
-//   _exportBlob(blob, spreadsheet.getName(), spreadsheet)
-// }
-function exportCurrentSheetAsPDF() {
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet()
-  var currentSheet = SpreadsheetApp.getActiveSheet()
-  
-  var blob = _getAsBlob(spreadsheet.getUrl(), currentSheet)
-  var pdfName;
-  var currentSheetName = currentSheet.getName();
-  switch (currentSheetName) {
-    case "Blog1":
-      pdfName = get_range_data('Setup','B2')[0][0];
-      break;
-    case "Blog2":
-      pdfName = get_range_data('Setup','B3')[0][0];
-      break;
-    case "Blog3":
-      pdfName = get_range_data('Setup','B4')[0][0];
-      break;
-    case "Blog4":
-      pdfName = get_range_data('Setup','B5')[0][0];
-      break;
-    case "Blog5":
-      pdfName = get_range_data('Setup','B6')[0][0];
-      break;
-    default:
-      pdfName = currentSheetName;
-      break;
-  }
-  _exportBlob(blob, pdfName, spreadsheet)
+/**
+ * Sets the webhook for a Telegram bot.
+ * @param {string} botToken The token of the Telegram bot.
+ * @param {string} webhookUrl The URL to set as the webhook.
+ * @return {HTTPResponse} The response from the Telegram API.
+ */
+function setTelegramWebhook(botToken, webhookUrl) {
+  const apiUrl = `https://api.telegram.org/bot${botToken}/setwebhook?url=${encodeURI(webhookUrl)}`;
+  return UrlFetchApp.fetch(apiUrl);
 }
